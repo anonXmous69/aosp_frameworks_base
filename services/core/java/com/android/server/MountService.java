@@ -103,6 +103,7 @@ import com.android.internal.widget.LockPatternUtils;
 import com.android.server.NativeDaemonConnector.Command;
 import com.android.server.NativeDaemonConnector.SensitiveArg;
 import com.android.server.pm.PackageManagerService;
+import com.android.internal.widget.ILockSettings;
 
 import libcore.io.IoUtils;
 import libcore.util.EmptyArray;
@@ -1259,7 +1260,10 @@ class MountService extends IMountService.Stub
     }
 
     private void onVolumeCreatedLocked(VolumeInfo vol) {
-        if (mPms.isOnlyCoreApps()) {
+        // power off alarm need the access to external storage for audio files.
+        // So in power off alarm mode, primary storage need to be mounted.
+        boolean isAlarmBoot = SystemProperties.getBoolean("ro.alarm_boot", false);
+        if (mPms.isOnlyCoreApps() && !isAlarmBoot) {
             Slog.d(TAG, "System booted in core-only mode; ignoring volume " + vol.getId());
             return;
         }
@@ -2584,7 +2588,7 @@ class MountService extends IMountService.Stub
         }
     }
 
-    public int encryptStorage(int type, String password) {
+    private int encryptStorageExtended(int type, String password, boolean wipe) {
         if (TextUtils.isEmpty(password) && type != StorageManager.CRYPT_TYPE_DEFAULT) {
             throw new IllegalArgumentException("password cannot be empty");
         }
@@ -2600,10 +2604,10 @@ class MountService extends IMountService.Stub
 
         try {
             if (type == StorageManager.CRYPT_TYPE_DEFAULT) {
-                mCryptConnector.execute("cryptfs", "enablecrypto", "inplace",
+                mCryptConnector.execute("cryptfs", "enablecrypto", wipe ? "wipe" : "inplace",
                                 CRYPTO_TYPES[type]);
             } else {
-                mCryptConnector.execute("cryptfs", "enablecrypto", "inplace",
+                mCryptConnector.execute("cryptfs", "enablecrypto", wipe ? "wipe" : "inplace",
                                 CRYPTO_TYPES[type], new SensitiveArg(password));
             }
         } catch (NativeDaemonConnectorException e) {
@@ -2612,6 +2616,22 @@ class MountService extends IMountService.Stub
         }
 
         return 0;
+    }
+
+    /** Encrypt Storage given a password.
+     *  @param type The password type.
+     *  @param password The password to be used in encryption.
+     */
+    public int encryptStorage(int type, String password) {
+        return encryptStorageExtended(type, password, false);
+    }
+
+    /** Encrypt Storage given a password after wiping it.
+     *  @param type The password type.
+     *  @param password The password to be used in encryption.
+     */
+    public int encryptWipeStorage(int type, String password) {
+        return encryptStorageExtended(type, password, true);
     }
 
     /** Set the password for encrypting the master key.
@@ -2628,9 +2648,24 @@ class MountService extends IMountService.Stub
             Slog.i(TAG, "changing encryption password...");
         }
 
+        ILockSettings lockSettings = ILockSettings.Stub.asInterface(
+                    ServiceManager.getService("lock_settings"));
+        String currentPassword="default_password";
+        try {
+            currentPassword = lockSettings.getPassword();
+        } catch (RemoteException e) {
+            Slog.e(TAG, "Couldn't get password" + e);
+        }
+
         try {
             NativeDaemonEvent event = mCryptConnector.execute("cryptfs", "changepw", CRYPTO_TYPES[type],
-                        new SensitiveArg(password));
+                        new SensitiveArg(currentPassword), new SensitiveArg(password));
+            try {
+                lockSettings.sanitizePassword();
+            } catch (RemoteException e) {
+                Slog.e(TAG, "Couldn't sanitize password" + e);
+            }
+
             return Integer.parseInt(event.getMessage());
         } catch (NativeDaemonConnectorException e) {
             // Encryption failed

@@ -155,6 +155,7 @@ public class KeyguardStatusBarView extends RelativeLayout
         } else if (mMultiUserSwitch.getParent() == this && mKeyguardUserSwitcherShowing) {
             removeView(mMultiUserSwitch);
         }
+
         if (mKeyguardUserSwitcher == null) {
             // If we have no keyguard switcher, the screen width is under 600dp. In this case,
             // we don't show the multi-user avatar unless there is more than 1 user on the device.
@@ -165,7 +166,10 @@ public class KeyguardStatusBarView extends RelativeLayout
                 mMultiUserSwitch.setVisibility(View.GONE);
             }
         }
-        mBatteryLevel.setVisibility(mBatteryCharging ? View.VISIBLE : View.GONE);
+
+        boolean showBatteryLevel = getResources().getBoolean(R.bool.config_showBatteryPercentage);
+        mBatteryLevel.setVisibility(
+                mBatteryCharging || showBatteryLevel ? View.VISIBLE : View.GONE);
     }
 
     private void updateSystemIconsLayoutParams() {

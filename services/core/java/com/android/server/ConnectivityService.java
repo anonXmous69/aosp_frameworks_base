@@ -78,6 +78,7 @@ import android.net.Uri;
 import android.net.metrics.DefaultNetworkEvent;
 import android.net.metrics.IpConnectivityLog;
 import android.net.metrics.NetworkEvent;
+import android.net.wifi.WifiDevice;
 import android.net.util.AvoidBadWifiTracker;
 import android.os.Binder;
 import android.os.Build;
@@ -102,6 +103,7 @@ import android.os.UserManager;
 import android.provider.Settings;
 import android.security.Credentials;
 import android.security.KeyStore;
+import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
 import android.util.ArraySet;
@@ -2983,6 +2985,14 @@ public class ConnectivityService extends IConnectivityManager.Stub
                     break;
                 }
             }
+        }
+    }
+
+    public List<WifiDevice> getTetherConnectedSta() {
+        if (isTetheringSupported()) {
+            return mTethering.getTetherConnectedSta();
+        } else {
+            return null;
         }
     }
 
